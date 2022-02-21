@@ -8,6 +8,11 @@ struct View {
 [[group(0), binding(0)]]
 var<uniform> view: View;
 
+struct Time {
+    time_since_startup: f32;
+};
+[[group(1), binding(0)]]
+var<uniform> time: Time;
 // as specified in `specialize()`
 struct Vertex {
     [[location(0)]] position: vec3<f32>;
@@ -41,6 +46,7 @@ fn vertex(
     // Project the world position of the mesh into screen position
     out.clip_position = view.view_proj * vec4<f32>(pos, 1.);
     out.color = vertex.color;
+        out.color.r = time.time_since_startup / 10.;
     out.pos = vec2<f32>(x, y) * vertex.frame;
     return out;
 }

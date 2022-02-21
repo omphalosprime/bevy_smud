@@ -18,10 +18,10 @@ use bevy::{
         },
         render_resource::{
             std140::AsStd140, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-            BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendState,
-            BufferBindingType, BufferSize, BufferUsages, BufferVec, CachedPipelineId,
-            ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState,
-            PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipelineCache,
+            BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendState, Buffer,
+            BufferBindingType, BufferDescriptor, BufferSize, BufferUsages, BufferVec,
+            CachedPipelineId, ColorTargetState, ColorWrites, Face, FragmentState, FrontFace,
+            MultisampleState, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipelineCache,
             RenderPipelineDescriptor, ShaderImport, ShaderStages, SpecializedPipeline,
             SpecializedPipelines, TextureFormat, VertexAttribute, VertexBufferLayout, VertexFormat,
             VertexState, VertexStepMode,
@@ -64,22 +64,82 @@ impl Plugin for SmudPlugin {
         // All the messy boiler-plate for loading a bunch of shaders
         app.add_plugin(ShaderLoadingPlugin);
         app.add_plugin(UiShapePlugin);
-
+        let render_device = app.world.get_resource::<RenderDevice>().unwrap();
+        let buffer = render_device.create_buffer(&BufferDescriptor {
+            label: Some("time uniform buffer"),
+            size: std::mem::size_of::<f32>() as u64,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .add_render_command::<Transparent2d, DrawSmudShape>()
+                .insert_resource(TimeMeta {
+                    buffer,
+                    bind_group: None,
+                })
                 .init_resource::<ExtractedShapes>()
                 .init_resource::<ShapeMeta>()
                 .init_resource::<SmudPipeline>()
                 .init_resource::<SpecializedPipelines<SmudPipeline>>()
+                .add_system_to_stage(RenderStage::Extract, extract_time)
                 .add_system_to_stage(RenderStage::Extract, extract_shapes)
                 .add_system_to_stage(RenderStage::Extract, extract_sdf_shaders)
-                .add_system_to_stage(RenderStage::Queue, queue_shapes);
+                .add_system_to_stage(RenderStage::Prepare, prepare_time)
+                .add_system_to_stage(RenderStage::Queue, queue_shapes)
+                .add_system_to_stage(RenderStage::Queue, queue_time_bind_group);
         }
     }
 }
+struct TimeMeta {
+    buffer: Buffer,
+    bind_group: Option<BindGroup>,
+}
 
-type DrawSmudShape = (SetItemPipeline, SetShapeViewBindGroup<0>, DrawShapeBatch);
+#[derive(Default)]
+struct ExtractedTime {
+    seconds_since_startup: f32,
+}
+fn queue_time_bind_group(
+    render_device: Res<RenderDevice>,
+    mut time_meta: ResMut<TimeMeta>,
+    pipeline: Res<SmudPipeline>,
+) {
+    let bind_group = render_device.create_bind_group(&BindGroupDescriptor {
+        label: None,
+        layout: &pipeline.time_bind_group_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: time_meta.buffer.as_entire_binding(),
+        }],
+    });
+    time_meta.bind_group = Some(bind_group);
+}
+
+// extract the passed time into a resource in the render world
+fn extract_time(mut commands: Commands, time: Res<Time>) {
+    commands.insert_resource(ExtractedTime {
+        seconds_since_startup: time.seconds_since_startup() as f32,
+    });
+}
+fn prepare_time(
+    time: Res<ExtractedTime>,
+    time_meta: ResMut<TimeMeta>,
+    render_queue: Res<RenderQueue>,
+) {
+    render_queue.write_buffer(
+        &time_meta.buffer,
+        0,
+        bevy::core::cast_slice(&[time.seconds_since_startup]),
+    );
+}
+
+type DrawSmudShape = (
+    SetItemPipeline,
+    SetShapeViewBindGroup<0>,
+    SetTimeBindGroup<1>,
+    DrawShapeBatch,
+);
 struct SetShapeViewBindGroup<const I: usize>;
 impl<const I: usize> EntityRenderCommand for SetShapeViewBindGroup<I> {
     type Param = (SRes<ShapeMeta>, SQuery<Read<ViewUniformOffset>>);
@@ -118,6 +178,24 @@ impl<P: BatchedPhaseItem> RenderCommand<P> for DrawShapeBatch {
     }
 }
 
+struct SetTimeBindGroup<const I: usize>;
+impl<const I: usize> EntityRenderCommand for SetTimeBindGroup<I> {
+    type Param = SRes<TimeMeta>;
+
+    fn render<'w>(
+        _view: Entity,
+        _item: Entity,
+        time_meta: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let time_bind_group = time_meta.into_inner().bind_group.as_ref().unwrap();
+
+        pass.set_bind_group(I, time_bind_group, &[]);
+
+        RenderCommandResult::Success
+    }
+}
+
 // struct DrawQuad;
 // impl EntityRenderCommand for DrawQuad {
 //     type Param = SRes<SmudPipeline>;
@@ -149,6 +227,7 @@ impl<P: BatchedPhaseItem> RenderCommand<P> for DrawShapeBatch {
 
 struct SmudPipeline {
     view_layout: BindGroupLayout,
+    time_bind_group_layout: BindGroupLayout,
     shaders: ShapeShaders,
 }
 
@@ -167,8 +246,25 @@ impl FromWorld for SmudPipeline {
                 },
                 count: None,
             }],
+
             label: Some("shape_view_layout"),
         });
+
+        let time_bind_group_layout =
+            render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("time bind group"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: BufferSize::new(std::mem::size_of::<f32>() as u64),
+                    },
+                    count: None,
+                }],
+            });
+
         // let quad = {
         //     let mut mesh = Mesh::new(PrimitiveTopology::TriangleStrip);
         //     let w = 0.5;
@@ -191,10 +287,10 @@ impl FromWorld for SmudPipeline {
         //         primitive_topology: mesh.primitive_topology(),
         //     }
         // };
-
         Self {
             view_layout,
-            shaders: Default::default()
+            shaders: Default::default(),
+            time_bind_group_layout,
             // quad_handle: Default::default(), // this is initialized later when we can actually use Assets!
             // quad,
         }
@@ -278,6 +374,7 @@ impl SpecializedPipeline for SmudPipeline {
             layout: Some(vec![
                 // Bind group 0 is the view uniform
                 self.view_layout.clone(),
+                self.time_bind_group_layout.clone(),
             ]),
             primitive: PrimitiveState {
                 front_face: FrontFace::Ccw,
