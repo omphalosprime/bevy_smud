@@ -1,87 +1,59 @@
-use bevy::{prelude::*, reflect::TypeUuid};
+use bevy::{
+    core_pipeline::Transparent2d,
+    prelude::{App, Plugin, Shader, Assets},
+    render::{
+        render_resource::{BufferDescriptor, BufferUsages, SpecializedPipelines},
+        renderer::RenderDevice,
+        RenderApp, RenderStage, render_phase::AddRenderCommand,
+    },
+    ui::TransparentUi,
+};
 
-const PRELUDE_SHADER_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 11291576006157771079);
-const PRELUDE_SHADER_IMPORT: &str = "bevy_smud::prelude";
+use crate::render::{
+    meta::{ShapeMeta, TimeMeta},
+    pipeline::SmudPipeline,
+    render_command::{DrawSmudShape, DrawSmudUiShape},
+    stages::{
+        extract::{extract_sdf_shaders, extract_shapes, extract_time, ExtractedShapes, extract_ui_shapes, ExtractedUiShapes},
+        prepare::{prepare_time, prepare_ui_shapes},
+        queue::{queue_shapes, queue_time_bind_group, queue_ui_shapes},
+    },
+};
 
-const SHAPES_SHADER_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 10055894596049459186);
-const SHAPES_SHADER_IMPORT: &str = "bevy_smud::shapes";
+use crate::assets::shader_loading::*;
 
-const COLORIZE_SHADER_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 10050447940405429418);
-const COLORIZE_SHADER_IMPORT: &str = "bevy_smud::colorize";
+#[derive(Default)]
+pub struct SmudPlugin;
 
-pub const SMUD_SHADER_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 5645555317811706725);
-const SMUD_SHADER_IMPORT: &str = "bevy_smud::smud";
-
-pub const VERTEX_SHADER_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 16846632126033267571);
-const VERTEX_SHADER_IMPORT: &str = "bevy_smud::vertex";
-
-pub const FRAGMENT_SHADER_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 10370213491934870425);
-const FRAGMENT_SHADER_IMPORT: &str = "bevy_smud::fragment";
-
-pub const DEFAULT_FILL_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 18184663565780163454);
-const DEFAULT_FILL_IMPORT: &str = "bevy_smud::default_fill";
-
-pub const SIMPLE_FILL_HANDLE: HandleUntyped =
-    HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 16286090377316294491);
-const SIMPLE_FILL_IMPORT: &str = "bevy_smud::simple_fill";
-
-// unused:
-// 16950619110804285379
-// 4146091551367169642
-// 8080191226000727371
-// 17031499878237077924
-// 17982773815777006860
-// 1530570659737977289
-
-#[cfg(feature = "smud_shader_hot_reloading")]
-struct HotShader {
-    strong_handle: Handle<Shader>,
-    untyped_handle: Option<HandleUntyped>,
-    loaded: bool,
-    import_path: String,
-}
-
-// Needed to keep the shaders alive
-#[cfg(feature = "smud_shader_hot_reloading")]
-struct HotShaders<T> {
-    shaders: Vec<HotShader>,
-    marker: std::marker::PhantomData<T>,
-}
-
-#[cfg(feature = "smud_shader_hot_reloading")]
-impl<T> Default for HotShaders<T> {
-    fn default() -> Self {
-        Self {
-            shaders: Default::default(),
-            marker: Default::default(),
-        }
-    }
-}
-
-#[cfg(feature = "smud_shader_hot_reloading")]
-fn setup_shader_imports<T: 'static + Send + Sync>(
-    mut hot_shaders: ResMut<HotShaders<T>>,
-    mut shaders: ResMut<Assets<Shader>>,
-    asset_server: Res<AssetServer>,
-) {
-    for hot_shader in hot_shaders.shaders.iter_mut() {
-        if !hot_shader.loaded
-            && asset_server.get_load_state(hot_shader.strong_handle.clone())
-                == bevy::asset::LoadState::Loaded
-        {
-            shaders
-                .get_mut(hot_shader.strong_handle.clone())
-                .unwrap()
-                .set_import_path(&hot_shader.import_path);
-
-            hot_shader.loaded = true;
+impl Plugin for SmudPlugin {
+    fn build(&self, app: &mut App) {
+        // All the messy boiler-plate for loading a bunch of shaders
+        app.add_plugin(ShaderLoadingPlugin);
+        app.add_plugin(UiShapePlugin);
+        let render_device = app.world.get_resource::<RenderDevice>().unwrap();
+        let buffer = render_device.create_buffer(&BufferDescriptor {
+            label: Some("time uniform buffer"),
+            size: std::mem::size_of::<f32>() as u64,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .add_render_command::<Transparent2d, DrawSmudShape>()
+                .insert_resource(TimeMeta {
+                    buffer,
+                    bind_group: None,
+                })
+                .init_resource::<ExtractedShapes>()
+                .init_resource::<ShapeMeta>()
+                .init_resource::<SmudPipeline>()
+                .init_resource::<SpecializedPipelines<SmudPipeline>>()
+                .add_system_to_stage(RenderStage::Extract, extract_time)
+                .add_system_to_stage(RenderStage::Extract, extract_shapes)
+                .add_system_to_stage(RenderStage::Extract, extract_sdf_shaders)
+                .add_system_to_stage(RenderStage::Prepare, prepare_time)
+                .add_system_to_stage(RenderStage::Queue, queue_shapes)
+                .add_system_to_stage(RenderStage::Queue, queue_time_bind_group);
         }
     }
 }
@@ -179,6 +151,23 @@ impl Plugin for ShaderLoadingPlugin {
             let simple_fill = Shader::from_wgsl(include_str!("../assets/fills/simple.wgsl"))
                 .with_import_path(SIMPLE_FILL_IMPORT);
             shaders.set_untracked(SIMPLE_FILL_HANDLE, simple_fill);
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct UiShapePlugin;
+
+impl Plugin for UiShapePlugin {
+    fn build(&self, app: &mut App) {
+        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                // re-using command from regular pass... ok?
+                .add_render_command::<TransparentUi, DrawSmudUiShape>()
+                .init_resource::<ExtractedUiShapes>()
+                .add_system_to_stage(RenderStage::Extract, extract_ui_shapes)
+                .add_system_to_stage(RenderStage::Prepare, prepare_ui_shapes)
+                .add_system_to_stage(RenderStage::Queue, queue_ui_shapes);
         }
     }
 }

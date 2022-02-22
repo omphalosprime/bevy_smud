@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_asset_loader::{AssetCollection, AssetLoader};
 use bevy_pancam::*;
-use bevy_smud::*;
+use bevy_smud::prelude::*;
+
 use rand::prelude::*;
 
 fn main() {

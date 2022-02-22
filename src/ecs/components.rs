@@ -1,6 +1,7 @@
 use bevy::{ecs::query::QueryItem, prelude::*, render::render_component::ExtractComponent};
 
-use crate::DEFAULT_FILL_HANDLE;
+use crate::assets::shader_loading::DEFAULT_FILL_HANDLE;
+
 
 #[derive(Component, Debug, Clone)]
 pub struct SmudShape {

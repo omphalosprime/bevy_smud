@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_pancam::*;
-use bevy_smud::{prelude::*, SIMPLE_FILL_HANDLE};
+use bevy_smud::prelude::*;
 
 fn main() {
     let mut app = App::new();

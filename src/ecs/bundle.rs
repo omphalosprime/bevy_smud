@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
-use crate::SmudShape;
+use crate::prelude::SmudShape;
+
 
 #[derive(Bundle, Default, Clone)]
 pub struct ShapeBundle {

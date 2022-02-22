@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_pancam::{PanCam, PanCamPlugin};
-use bevy_smud::*;
+use bevy_smud::prelude::*;
+
 
 /// This example just shows that transforms work
 

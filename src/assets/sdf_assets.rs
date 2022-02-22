@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-
+// I don't know why this is a trait or why it is called SdfAssets
 pub trait SdfAssets {
     fn add_sdf_body<T: Into<String>>(&mut self, sdf: T) -> Handle<Shader>;
     fn add_sdf_expr<T: Into<String>>(&mut self, sdf: T) -> Handle<Shader>;
