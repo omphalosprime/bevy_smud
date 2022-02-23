@@ -7,8 +7,8 @@ fn bevy_head(p: vec2<f32>) -> f32 {
     return min(skull, beak);
 }
 
-fn sdf(p: vec2<f32>) -> f32 {
-    let scale = 300.0;
+fn sdf(p: vec2<f32>, t: f32) -> f32 {
+    let scale = 300.0 * t;
     var p = p / scale;
 
     let p_upper_wing = p - vec2<f32>(-0.3, -0.25);

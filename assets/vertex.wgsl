@@ -26,6 +26,8 @@ struct VertexOutput {
     [[builtin(position)]] clip_position: vec4<f32>;
     [[location(0)]] color: vec4<f32>;
     [[location(1)]] pos: vec2<f32>;
+    [[location(2)]] time: f32;
+
 };
 
 [[stage(vertex)]]
@@ -48,5 +50,6 @@ fn vertex(
     out.color = vertex.color;
         out.color.r = time.time_since_startup / 10.;
     out.pos = vec2<f32>(x, y) * vertex.frame;
+    out.time = time.time_since_startup;
     return out;
 }
