@@ -33,6 +33,19 @@ pub struct ExtractedShape {
     pub transform: GlobalTransform,
 }
 
+
+#[derive(Component, Clone, Debug)]
+pub struct ExtractedTexturedShape {
+    pub color: Color,
+    pub frame: f32,
+    pub sdf_shader: Handle<Shader>,  // todo could be HandleId?
+    pub fill_shader: Handle<Shader>, // todo could be HandleId?
+    pub transform: GlobalTransform,
+    pub image_handle_id: HandleId,
+
+}
+
+
 #[derive(Default)]
 pub struct ShapeShaders(pub HashMap<(HandleId, HandleId), Handle<Shader>>);
 
@@ -160,6 +173,41 @@ pub fn extract_ui_shapes(
             sdf_shader: shape.sdf.clone_weak(),
             fill_shader: shape.fill.clone_weak(),
             frame,
+        });
+    }
+}
+
+
+
+
+#[derive(Default, Debug)]
+pub struct ExtractedTexturedShapes(pub Vec<ExtractedTexturedShape>);
+
+pub fn extract_textured_shapes(
+    mut render_world: ResMut<RenderWorld>,
+    query: Query<(&SmudShape, &ComputedVisibility, &GlobalTransform)>,
+) {
+    let mut extracted_shapes = render_world.get_resource_mut::<ExtractedShapes>().unwrap();
+    extracted_shapes.0.clear();
+
+    for (shape, computed_visibility, transform) in query.iter() {
+        if !computed_visibility.is_visible {
+            continue;
+        }
+
+        let frame = match shape.frame {
+            Frame::Quad(s) => s,
+        };
+
+        extracted_shapes.0.alloc().init(ExtractedShape {
+            color: shape.color,
+            transform: *transform,
+            sdf_shader: shape.sdf.clone_weak(),
+            fill_shader: shape.fill.clone_weak(),
+            frame
+            // rect: None,
+            // // Pass the custom size
+            // custom_size: shape.custom_size,
         });
     }
 }

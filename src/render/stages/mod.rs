@@ -1,7 +1,11 @@
 use std::ops::Range;
 
 use bevy::{
-    asset::HandleId, core::FloatOrd, prelude::Component, render::render_resource::CachedPipelineId,
+    asset::HandleId,
+    core::FloatOrd,
+    prelude::{Component, Handle, Image},
+    render::render_resource::{BindGroup, CachedPipelineId},
+    utils::HashMap,
 };
 use bytemuck::{Pod, Zeroable};
 
@@ -12,6 +16,11 @@ pub mod queue;
 #[derive(Component, Eq, PartialEq, Copy, Clone)]
 pub struct ShapeBatch {
     pub shader: (HandleId, HandleId),
+}
+#[derive(Component, Eq, PartialEq, Copy, Clone)]
+pub struct TexturedShapeBatch {
+    pub shader: (HandleId, HandleId),
+    pub image_handle_id: HandleId,
 }
 
 #[derive(Component, Eq, PartialEq, Clone)]
@@ -31,4 +40,9 @@ pub struct ShapeVertex {
     pub rotation: [f32; 2],
     pub scale: f32,
     // pub uv: [f32; 2],
+}
+
+#[derive(Default)]
+pub struct ImageBindGroups {
+    pub values: HashMap<Handle<Image>, BindGroup>,
 }

@@ -1,9 +1,22 @@
+use bevy::{
+    ecs::system::{
+        lifetimeless::{Read, SQuery, SRes},
+        SystemParamItem,
+    },
+    prelude::*,
+    render::{
+        render_phase::{
+            BatchedPhaseItem, EntityRenderCommand, RenderCommand, RenderCommandResult,
+            SetItemPipeline, TrackedRenderPass,
+        },
+        view::ViewUniformOffset,
+    },
+};
 
-use bevy::{prelude::*, render::{view::ViewUniformOffset, render_phase::{EntityRenderCommand, SetItemPipeline, TrackedRenderPass, RenderCommandResult, BatchedPhaseItem, RenderCommand}}, ecs::system::{lifetimeless::{SQuery, Read, SRes}, SystemParamItem}};
-
-use super::{meta::{ShapeMeta, TimeMeta}, stages::{ShapeBatch, UiShapeBatch}};
-
-
+use super::{
+    meta::{ShapeMeta, TimeMeta, TexturedShapeMeta, TexturedTimeMeta},
+    stages::{ShapeBatch, UiShapeBatch, TexturedShapeBatch, ImageBindGroups},
+};
 
 // order matters....
 pub type DrawSmudShape = (
@@ -67,11 +80,7 @@ impl<const I: usize> EntityRenderCommand for SetTimeBindGroup<I> {
         RenderCommandResult::Success
     }
 }
-
-
-
-
-
+// UI Shape
 pub type DrawSmudUiShape = (SetItemPipeline, SetShapeViewBindGroup<0>, DrawUiShapeNode);
 pub struct DrawUiShapeNode;
 impl EntityRenderCommand for DrawUiShapeNode {
@@ -100,6 +109,96 @@ impl EntityRenderCommand for DrawUiShapeNode {
 }
 
 
+//TEXTURED SMUD
+// order matters....
+pub type DrawTexturedSmudShape = (
+    SetItemPipeline,
+    SetShapeViewBindGroup<0>,
+    SetTimeBindGroup<1>,
+    SetSmudTextureBindGroup<2>,
+    DrawShapeBatch,
+);
+pub struct SetTexturedShapeViewBindGroup<const I: usize>;
+impl<const I: usize> EntityRenderCommand for SetTexturedShapeViewBindGroup<I> {
+    type Param = (SRes<TexturedShapeMeta>, SQuery<Read<ViewUniformOffset>>);
+
+    fn render<'w>(
+        view: Entity,
+        _item: Entity,
+        (shape_meta, view_query): SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let view_uniform = view_query.get(view).unwrap();
+        pass.set_bind_group(
+            I,
+            shape_meta.into_inner().view_bind_group.as_ref().unwrap(),
+            &[view_uniform.offset],
+        );
+        RenderCommandResult::Success
+    }
+}
+
+pub struct DrawTexturedShapeBatch;
+impl<P: BatchedPhaseItem> RenderCommand<P> for DrawTexturedShapeBatch {
+    type Param = (SRes<TexturedShapeMeta>, SQuery<Read<TexturedShapeBatch>>);
+
+    fn render<'w>(
+        _view: Entity,
+        item: &P,
+        (shape_meta, _query_batch): SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        // let shape_batch = query_batch.get(item.entity()).unwrap();
+        let shape_meta = shape_meta.into_inner();
+        pass.set_vertex_buffer(0, shape_meta.vertices.buffer().unwrap().slice(..));
+        pass.draw(0..4, item.batch_range().as_ref().unwrap().clone());
+        RenderCommandResult::Success
+    }
+}
+
+pub struct SetTexturedTimeBindGroup<const I: usize>;
+impl<const I: usize> EntityRenderCommand for SetTexturedTimeBindGroup<I> {
+    type Param = SRes<TexturedTimeMeta>;
+
+    fn render<'w>(
+        _view: Entity,
+        _item: Entity,
+        time_meta: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let time_bind_group = time_meta.into_inner().bind_group.as_ref().unwrap();
+
+        pass.set_bind_group(I, time_bind_group, &[]);
+
+        RenderCommandResult::Success
+    }
+}
+
+
+pub struct SetSmudTextureBindGroup<const I: usize>;
+impl<const I: usize> EntityRenderCommand for SetSmudTextureBindGroup<I> {
+    type Param = (SRes<ImageBindGroups>, SQuery<Read<TexturedShapeBatch>>);
+
+    fn render<'w>(
+        _view: Entity,
+        item: Entity,
+        (image_bind_groups, query_batch): SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let sprite_batch = query_batch.get(item).unwrap();
+        let image_bind_groups = image_bind_groups.into_inner();
+
+        pass.set_bind_group(
+            I,
+            image_bind_groups
+                .values
+                .get(&Handle::weak(sprite_batch.image_handle_id))
+                .unwrap(),
+            &[],
+        );
+        RenderCommandResult::Success
+    }
+}
 
 
 // struct DrawQuad;

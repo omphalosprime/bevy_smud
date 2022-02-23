@@ -14,6 +14,28 @@ pub struct ShapeBundle {
     pub computed_visibility: ComputedVisibility,
 }
 
+
+
+// TODO: TEXTURE ADDON
+// #[derive(Bundle, Default, Clone)]
+// pub struct TexturedShapeBundle {
+//     pub shape: SmudShape,
+//     pub texture: Handle<Image>,
+//     pub transform: Transform,
+//     pub global_transform: GlobalTransform,
+//     /// User indication of whether an entity is visible
+//     pub visibility: Visibility,
+//     /// Algorithmically-computed indication of whether an entity is visible and should be extracted for rendering
+//     pub computed_visibility: ComputedVisibility,
+// }
+
+
+
+
+
+
+
+
 #[derive(Bundle, Default, Clone)]
 pub struct UiShapeBundle {
     /// Describes the size of the node

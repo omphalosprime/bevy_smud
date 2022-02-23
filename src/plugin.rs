@@ -29,6 +29,7 @@ impl Plugin for SmudPlugin {
     fn build(&self, app: &mut App) {
         // All the messy boiler-plate for loading a bunch of shaders
         app.add_plugin(ShaderLoadingPlugin);
+        app.add_plugin(TexturedSmudPlugin);
         app.add_plugin(UiShapePlugin);
         let render_device = app.world.get_resource::<RenderDevice>().unwrap();
         let buffer = render_device.create_buffer(&BufferDescriptor {
@@ -57,6 +58,41 @@ impl Plugin for SmudPlugin {
         }
     }
 }
+
+#[derive(Default)]
+pub struct UiShapePlugin;
+
+impl Plugin for UiShapePlugin {
+    fn build(&self, app: &mut App) {
+        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                // re-using command from regular pass... ok?
+                .add_render_command::<TransparentUi, DrawSmudUiShape>()
+                .init_resource::<ExtractedUiShapes>()
+                .add_system_to_stage(RenderStage::Extract, extract_ui_shapes)
+                .add_system_to_stage(RenderStage::Prepare, prepare_ui_shapes)
+                .add_system_to_stage(RenderStage::Queue, queue_ui_shapes);
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct TexturedSmudPlugin;
+impl Plugin for TexturedSmudPlugin {
+    fn build(&self, app: &mut App) {
+        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+            // render_app
+                // re-using command from regular pass... ok?
+                // .add_render_command::<TransparentUi, DrawSmudUiShape>()
+                // .init_resource::<ExtractedUiShapes>()
+                // .add_system_to_stage(RenderStage::Extract, extract_ui_shapes)
+                // .add_system_to_stage(RenderStage::Prepare, prepare_ui_shapes)
+                // .add_system_to_stage(RenderStage::Queue, queue_ui_shapes);
+        }
+    }
+}
+
+
 
 pub struct ShaderLoadingPlugin;
 
@@ -155,19 +191,3 @@ impl Plugin for ShaderLoadingPlugin {
     }
 }
 
-#[derive(Default)]
-pub struct UiShapePlugin;
-
-impl Plugin for UiShapePlugin {
-    fn build(&self, app: &mut App) {
-        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
-            render_app
-                // re-using command from regular pass... ok?
-                .add_render_command::<TransparentUi, DrawSmudUiShape>()
-                .init_resource::<ExtractedUiShapes>()
-                .add_system_to_stage(RenderStage::Extract, extract_ui_shapes)
-                .add_system_to_stage(RenderStage::Prepare, prepare_ui_shapes)
-                .add_system_to_stage(RenderStage::Queue, queue_ui_shapes);
-        }
-    }
-}
